@@ -1,0 +1,61 @@
+local M = { namespace = vim.api.nvim_create_namespace("review") }
+function M.highlights()
+  for name, link in pairs({
+    ReviewAdd = "DiffAdd",
+    ReviewDelete = "DiffDelete",
+    ReviewChange = "DiffChange",
+    ReviewAddSign = "DiffAdd",
+    ReviewDeleteSign = "DiffDelete",
+    ReviewChangeSign = "DiffChange",
+    ReviewVirtualDelete = "DiffDelete",
+  }) do
+    vim.api.nvim_set_hl(0, name, { default = true, link = link })
+  end
+end
+function M.clear(buf)
+  if vim.api.nvim_buf_is_valid(buf) then
+    vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
+  end
+end
+function M.apply(buf, hunks)
+  M.clear(buf)
+  local count = vim.api.nvim_buf_line_count(buf)
+  for _, hunk in ipairs(hunks) do
+    local deleted, has_add = {}, false
+    for _, line in ipairs(hunk.lines) do
+      if line.kind == "delete" then
+        deleted[#deleted + 1] = { { "- " .. line.text, "ReviewVirtualDelete" } }
+      end
+      if line.kind == "add" then
+        has_add = true
+      end
+    end
+    local changed = #deleted > 0 and has_add
+    local row = hunk.new_start - 1
+    for _, line in ipairs(hunk.lines) do
+      if line.kind == "add" and row >= 0 and row < count then
+        vim.api.nvim_buf_set_extmark(buf, M.namespace, row, 0, {
+          line_hl_group = changed and "ReviewChange" or "ReviewAdd",
+          sign_text = changed and "~" or "+",
+          sign_hl_group = changed and "ReviewChangeSign" or "ReviewAddSign",
+          priority = 120,
+        })
+      end
+      if line.kind ~= "delete" then
+        row = row + 1
+      end
+    end
+    if #deleted > 0 then
+      local anchor = hunk.new_count == 0 and hunk.new_start or hunk.new_start - 1
+      local after = anchor >= count
+      vim.api.nvim_buf_set_extmark(buf, M.namespace, math.max(0, math.min(anchor, count - 1)), 0, {
+        virt_lines = deleted,
+        virt_lines_above = not after,
+        sign_text = not has_add and "-" or nil,
+        sign_hl_group = "ReviewDeleteSign",
+        priority = 119,
+      })
+    end
+  end
+end
+return M

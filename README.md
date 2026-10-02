@@ -54,7 +54,6 @@ vim.pack.add({
 require("delta").setup()
 ```
 
-```
 
 ### lazy.nvim
 

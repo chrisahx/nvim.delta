@@ -9,7 +9,7 @@ function M.render(session)
   if not buf or not vim.api.nvim_buf_is_valid(buf) then
     return
   end
-  local lines = { "Review against " .. display(session.base), "" }
+  local lines = { "Delta against " .. display(session.base), "" }
   local done = 0
   for _, file in ipairs(session.files) do
     if file.reviewed then
@@ -58,7 +58,7 @@ function M.open(session, options, actions)
   session.sidebar_buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_win_set_buf(session.sidebar_win, session.sidebar_buf)
   vim.api.nvim_win_set_width(session.sidebar_win, options.sidebar.width)
-  vim.bo[session.sidebar_buf].filetype = "review"
+  vim.bo[session.sidebar_buf].filetype = "delta"
   vim.bo[session.sidebar_buf].bufhidden = "wipe"
   for key, value in pairs({
     number = false,

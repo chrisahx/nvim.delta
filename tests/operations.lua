@@ -1,6 +1,6 @@
 vim.opt.runtimepath:prepend(vim.fn.getcwd())
-local review = require("review")
-local git_module = require("review.git")
+local delta = require("delta")
+local git_module = require("delta.git")
 local passed = 0
 local notifications = {}
 local original_notify, original_select = vim.notify, vim.ui.select
@@ -60,16 +60,16 @@ write("source.txt", contents(committed))
 git({ "add", "." })
 git({ "commit", "-m", "feature" })
 vim.cmd.cd(vim.fn.fnameescape(temp))
-review.setup({ base = "main", use_merge_base = false })
+delta.setup({ base = "main", use_merge_base = false })
 local function file(path)
-  for _, f in ipairs(review.get_session().files) do
+  for _, f in ipairs(delta.get_session().files) do
     if f.path == (path or "source.txt") then
       return f
     end
   end
 end
 local function reset(data, path)
-  review.close()
+  delta.close()
   git({ "reset", "--hard", "HEAD" })
   git({ "clean", "-fd" })
   path = path or "source.txt"
@@ -78,12 +78,12 @@ local function reset(data, path)
   end
   vim.cmd("edit! " .. vim.fn.fnameescape(temp .. "/" .. path))
   vim.cmd("edit!") -- Also reload an already-existing hidden buffer.
-  review.start()
+  delta.start()
   wait(function()
-    return review.get_session() and file(path) and file(path).fingerprint
+    return delta.get_session() and file(path) and file(path).fingerprint
   end)
-  require("review.session").open((function()
-    for i, f in ipairs(review.get_session().files) do
+  require("delta.session").open((function()
+    for i, f in ipairs(delta.get_session().files) do
       if f.path == path then
         return i
       end
@@ -99,9 +99,9 @@ local function action(name, row)
   if row then
     vim.api.nvim_win_set_cursor(0, { row, 0 })
   end
-  review[name]()
+  delta[name]()
   wait(function()
-    return not review.get_session().operation
+    return not delta.get_session().operation
   end)
 end
 local function settle(predicate)
@@ -115,7 +115,7 @@ local function signs(buf)
     ipairs(
       vim.api.nvim_buf_get_extmarks(
         buf,
-        require("review.decorations").namespace,
+        require("delta.decorations").namespace,
         0,
         -1,
         { details = true }
@@ -137,17 +137,17 @@ end
 test("stage one hunk, leave disk and unrelated hunks untouched", function()
   local work = changed()
   local buf = reset(contents(work))
-  eq(vim.fn.maparg("<leader>rs", "n", false, true).desc, "Review: stage_hunk")
+  eq(vim.fn.maparg("<leader>rs", "n", false, true).desc, "Delta: stage_hunk")
   vim.api.nvim_win_set_cursor(0, { 3, 0 })
-  vim.cmd("ReviewStageHunk")
+  vim.cmd("DeltaStageHunk")
   wait(function()
-    return not review.get_session().operation
+    return not delta.get_session().operation
   end)
   local expected = vim.deepcopy(committed)
   expected[3] = work[3]
   eq(git({ "show", ":source.txt" }), contents(expected))
-  eq(require("review.buffer").text(buf), contents(work))
-  eq(require("review.index").read(temp .. "/source.txt"), contents(work))
+  eq(require("delta.buffer").text(buf), contents(work))
+  eq(require("delta.index").read(temp .. "/source.txt"), contents(work))
   settle(function(f)
     return f.staged and f.unstaged
   end)
@@ -155,15 +155,15 @@ test("stage one hunk, leave disk and unrelated hunks untouched", function()
   settle(function(f)
     return f.staged_rows and f.staged_rows.lines[2]
   end)
-  eq(signs(buf)[2].sign_hl_group, "ReviewStagedSign")
+  eq(signs(buf)[2].sign_hl_group, "DeltaStagedSign")
   assert(signs(buf)[2].sign_text:find("┃", 1, true))
-  eq(signs(buf)[9].sign_hl_group, "ReviewChangeSign")
-  eq(signs(buf)[0].sign_hl_group, "ReviewChangeSign") -- committed, not staged
+  eq(signs(buf)[9].sign_hl_group, "DeltaChangeSign")
+  eq(signs(buf)[0].sign_hl_group, "DeltaChangeSign") -- committed, not staged
   action("unstage_hunk", 3)
   settle(function(f)
     return not f.staged and f.hunks[1] ~= nil
   end)
-  eq(signs(buf)[2].sign_hl_group, "ReviewChangeSign")
+  eq(signs(buf)[2].sign_hl_group, "DeltaChangeSign")
 end)
 
 test("unstage a hunk at its working-buffer position after insertions", function()
@@ -174,7 +174,7 @@ test("unstage a hunk at its working-buffer position after insertions", function(
   vim.list_extend(inserted, work)
   write("source.txt", contents(inserted))
   vim.cmd("edit!")
-  review.refresh()
+  delta.refresh()
   settle(function(f)
     return f.staged and f.unstaged and f.hunks[1] ~= nil
   end)
@@ -182,55 +182,55 @@ test("unstage a hunk at its working-buffer position after insertions", function(
   local expected = vim.deepcopy(committed)
   expected[3] = work[3]
   eq(git({ "show", ":source.txt" }), contents(expected))
-  eq(require("review.buffer").text(buf), contents(inserted))
+  eq(require("delta.buffer").text(buf), contents(inserted))
   settle(function(f)
     return f.staged_rows and f.staged_rows.lines[4] and not f.staged_rows.lines[11]
   end)
-  eq(signs(buf)[4].sign_hl_group, "ReviewStagedSign")
-  eq(signs(buf)[11].sign_hl_group, "ReviewChangeSign")
+  eq(signs(buf)[4].sign_hl_group, "DeltaStagedSign")
+  eq(signs(buf)[11].sign_hl_group, "DeltaChangeSign")
 end)
 
 test("staged markers do not hide unsaved replacements on the same line", function()
   local buf = reset(contents(changed()))
   git({ "add", "source.txt" })
   vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "new unstaged edit" })
-  review.refresh()
+  delta.refresh()
   settle(function(f)
     return f.staged_rows and f.staged_rows.lines[9]
   end)
-  eq(signs(buf)[2].sign_hl_group, "ReviewChangeSign")
-  eq(signs(buf)[9].sign_hl_group, "ReviewStagedSign")
+  eq(signs(buf)[2].sign_hl_group, "DeltaChangeSign")
+  eq(signs(buf)[9].sign_hl_group, "DeltaStagedSign")
 end)
 
 test("addition and deletion signs update when staged and unstaged", function()
   local added = vim.deepcopy(committed)
   added[#added + 1] = "new addition"
   local buf = reset(contents(added))
-  eq(signs(buf)[12].sign_hl_group, "ReviewAddSign")
+  eq(signs(buf)[12].sign_hl_group, "DeltaAddSign")
   action("stage_hunk", 13)
   settle(function(f)
     return f.staged_rows and f.staged_rows.lines[12]
   end)
-  eq(signs(buf)[12].sign_hl_group, "ReviewStagedSign")
+  eq(signs(buf)[12].sign_hl_group, "DeltaStagedSign")
   action("unstage_hunk", 13)
   settle(function(f)
     return not f.staged and f.hunks[1]
   end)
-  eq(signs(buf)[12].sign_hl_group, "ReviewAddSign")
+  eq(signs(buf)[12].sign_hl_group, "DeltaAddSign")
   local deleted = vim.deepcopy(committed)
   table.remove(deleted)
   buf = reset(contents(deleted))
-  eq(signs(buf)[10].sign_hl_group, "ReviewDeleteSign")
+  eq(signs(buf)[10].sign_hl_group, "DeltaDeleteSign")
   action("stage_hunk", 11)
   settle(function(f)
     return f.staged_rows and f.staged_rows.deletions[10]
   end)
-  eq(signs(buf)[10].sign_hl_group, "ReviewStagedSign")
+  eq(signs(buf)[10].sign_hl_group, "DeltaStagedSign")
   action("unstage_hunk", 11)
   settle(function(f)
     return not f.staged and f.hunks[1]
   end)
-  eq(signs(buf)[10].sign_hl_group, "ReviewDeleteSign")
+  eq(signs(buf)[10].sign_hl_group, "DeltaDeleteSign")
 end)
 
 test("refuse staging unsaved edits", function()
@@ -250,16 +250,16 @@ test("discard restores index, preserves staged and other unsaved edits, supports
   git({ "add", "source.txt" })
   write("source.txt", contents(work))
   vim.api.nvim_buf_set_lines(buf, 4, 5, false, { "another unsaved edit" })
-  local before = require("review.buffer").text(buf)
+  local before = require("delta.buffer").text(buf)
   action("discard_hunk", 3)
   eq(vim.api.nvim_buf_get_lines(buf, 2, 3, false), { "staged line 3" })
   eq(vim.api.nvim_buf_get_lines(buf, 4, 5, false), { "another unsaved edit" })
   eq(vim.api.nvim_buf_get_lines(buf, 9, 10, false), { "working line 10" })
   eq(git({ "show", ":source.txt" }), contents(staged))
-  eq(require("review.index").read(temp .. "/source.txt"), contents(work))
+  eq(require("delta.index").read(temp .. "/source.txt"), contents(work))
   assert(vim.bo[buf].modified)
   vim.cmd("undo")
-  eq(require("review.buffer").text(buf), before)
+  eq(require("delta.buffer").text(buf), before)
 end)
 
 test("review-base restore reverses committed code in buffer only", function()
@@ -273,14 +273,14 @@ end)
 
 test("cancel discard without changing anything", function()
   local buf = reset(contents(changed()))
-  local before = require("review.buffer").text(buf)
+  local before = require("delta.buffer").text(buf)
   local select = vim.ui.select
   vim.ui.select = function(items, _, callback)
     callback(items[1], 1)
   end
   action("discard_hunk", 3)
   vim.ui.select = select
-  eq(require("review.buffer").text(buf), before)
+  eq(require("delta.buffer").text(buf), before)
   eq(vim.bo[buf].modified, false)
 end)
 
@@ -291,26 +291,26 @@ test("confirmation rejects buffer changes and external index changes", function(
   vim.ui.select = function(_, _, callback)
     reply = callback
   end
-  review.discard_hunk()
+  delta.discard_hunk()
   wait(function()
     return reply ~= nil
   end)
   vim.api.nvim_buf_set_lines(buf, 2, 3, false, { "changed while confirming" })
   reply("Discard unstaged", 2)
   wait(function()
-    return not review.get_session().operation
+    return not delta.get_session().operation
   end)
   eq(vim.api.nvim_buf_get_lines(buf, 2, 3, false), { "changed while confirming" })
   assert(notifications[#notifications]:find("changed", 1, true))
   reply = nil
-  review.discard_hunk()
+  delta.discard_hunk()
   wait(function()
     return reply ~= nil
   end)
   git({ "add", "source.txt" })
   reply("Discard unstaged", 2)
   wait(function()
-    return not review.get_session().operation
+    return not delta.get_session().operation
   end)
   eq(vim.api.nvim_buf_get_lines(buf, 2, 3, false), { "changed while confirming" })
   assert(notifications[#notifications]:find("Git index changed", 1, true))
@@ -324,7 +324,7 @@ test("stage/unstage untracked files, quoted paths and no-newline files", functio
     eq(git({ "show", ":" .. path }), "first\nlast")
     action("unstage_hunk", 1)
     eq(git({ "ls-files", "--", ":(literal)" .. path }), "")
-    eq(require("review.buffer").text(buf), "first\nlast")
+    eq(require("delta.buffer").text(buf), "first\nlast")
   end
 end)
 
@@ -376,7 +376,7 @@ test("respect existing Git index locks, release our own locks on errors", functi
   reset(contents(changed()))
   write(".git/index.lock", "occupied")
   action("stage_hunk", 3)
-  eq(require("review.index").read(temp .. "/.git/index.lock"), "occupied")
+  eq(require("delta.index").read(temp .. "/.git/index.lock"), "occupied")
   eq(git({ "show", ":source.txt" }), contents(committed))
   vim.fn.delete(temp .. "/.git/index.lock")
   local result, error, done
@@ -387,7 +387,7 @@ test("respect existing Git index locks, release our own locks on errors", functi
   wait(function()
     return entry ~= nil
   end)
-  require("review.index").apply(temp, "source.txt", entry, "invalid patch\n", false, function()
+  require("delta.index").apply(temp, "source.txt", entry, "invalid patch\n", false, function()
     return true
   end, function(value, err)
     result, error, done = value, err, true
@@ -403,11 +403,11 @@ end)
 test("stage and unstage a fully deleted file", function()
   reset(contents(changed()))
   vim.fn.delete(temp .. "/source.txt")
-  review.refresh()
+  delta.refresh()
   settle(function(f)
     return f.status == "D"
   end)
-  require("review.session").open(1)
+  require("delta.session").open(1)
   wait(function()
     return file().buf and vim.bo[file().buf].buftype == "nofile"
   end)
@@ -419,7 +419,7 @@ test("stage and unstage a fully deleted file", function()
 end)
 
 test("EOF options follow undo, redo and alternate undo branches", function()
-  local b, d = require("review.buffer"), require("review.diff")
+  local b, d = require("delta.buffer"), require("delta.diff")
   for _, item in ipairs({ { "a\n", "a" }, { "a", "a\n" }, { "", "a\n" } }) do
     local buf = reset(item[2], "eof.txt")
     local original_fixeol = vim.bo[buf].fixendofline
@@ -444,14 +444,14 @@ test("stale stage selection cannot overwrite an external index update", function
   vim.ui.select = function(values, _, callback)
     items, reply = values, callback
   end
-  review.stage_hunk()
+  delta.stage_hunk()
   wait(function()
     return reply ~= nil
   end)
   git({ "add", "source.txt" })
   reply(items[1], 1)
   wait(function()
-    return not review.get_session().operation
+    return not delta.get_session().operation
   end)
   eq(git({ "show", ":source.txt" }), contents(changed()))
   eq(vim.uv.fs_stat(temp .. "/.git/index.lock"), nil)
@@ -474,11 +474,11 @@ test("closing a session aborts index publication and releases the lock", functio
     end, opts)
   end
   vim.api.nvim_win_set_cursor(0, { 3, 0 })
-  review.stage_hunk()
+  delta.stage_hunk()
   wait(function()
     return reply ~= nil
   end)
-  review.close()
+  delta.close()
   reply()
   wait(function()
     return vim.uv.fs_stat(temp .. "/.git/index.lock") == nil
@@ -493,11 +493,11 @@ test("index transactions work without an existing index", function()
   assert(vim.system({ "git", "-C", root, "init" }):wait().code == 0)
   local patch = git_module.addition("new.txt", "new\n", false)
   local done, result, error
-  require("review.index").apply(
+  require("delta.index").apply(
     root,
     "new.txt",
     { oid = false, mode = false },
-    patch.header .. require("review.diff").patch(patch.hunks[1]),
+    patch.header .. require("delta.diff").patch(patch.hunks[1]),
     false,
     function()
       return true
@@ -528,16 +528,16 @@ test("stage transactions support split indexes", function()
 end)
 
 test("linked worktree staging does not touch the main worktree index", function()
-  review.close()
+  delta.close()
   local worktree = temp .. "-worktree"
   git({ "worktree", "add", "-b", "other-worktree", worktree, "HEAD" })
   local patch = git_module.addition("linked.txt", "linked\n", false)
   local result, error, done
-  require("review.index").apply(
+  require("delta.index").apply(
     worktree,
     "linked.txt",
     { oid = false, mode = false },
-    patch.header .. require("review.diff").patch(patch.hunks[1]),
+    patch.header .. require("delta.diff").patch(patch.hunks[1]),
     false,
     function()
       return true
@@ -558,7 +558,7 @@ test("linked worktree staging does not touch the main worktree index", function(
 end)
 
 test("discard handles first/last-line deletions, empty files and EOF newline", function()
-  local diff = require("review.diff")
+  local diff = require("delta.diff")
   for _, item in ipairs({
     { "a\nb\n", "b\n" },
     { "a\nb\n", "a\n" },
@@ -577,7 +577,7 @@ test("discard handles first/last-line deletions, empty files and EOF newline", f
   end
 end)
 
-review.close()
+delta.close()
 vim.notify, vim.ui.select = original_notify, original_select
 vim.cmd.cd(vim.fn.fnameescape(vim.env.HOME or "/tmp"))
 vim.fn.delete(temp, "rf")

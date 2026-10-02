@@ -1,14 +1,14 @@
-local M = { namespace = vim.api.nvim_create_namespace("review") }
+local M = { namespace = vim.api.nvim_create_namespace("delta") }
 function M.highlights()
   for name, link in pairs({
-    ReviewAdd = "DiffAdd",
-    ReviewDelete = "DiffDelete",
-    ReviewChange = "DiffChange",
-    ReviewAddSign = "DiffAdd",
-    ReviewDeleteSign = "DiffDelete",
-    ReviewChangeSign = "DiffChange",
-    ReviewVirtualDelete = "DiffDelete",
-    ReviewStagedSign = "DiagnosticOk",
+    DeltaAdd = "DiffAdd",
+    DeltaDelete = "DiffDelete",
+    DeltaChange = "DiffChange",
+    DeltaAddSign = "DiffAdd",
+    DeltaDeleteSign = "DiffDelete",
+    DeltaChangeSign = "DiffChange",
+    DeltaVirtualDelete = "DiffDelete",
+    DeltaStagedSign = "DiagnosticOk",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = link })
   end
@@ -26,7 +26,7 @@ function M.apply(buf, hunks, staged)
     local deleted, has_add = {}, false
     for _, line in ipairs(hunk.lines) do
       if line.kind == "delete" then
-        deleted[#deleted + 1] = { { "- " .. line.text, "ReviewVirtualDelete" } }
+        deleted[#deleted + 1] = { { "- " .. line.text, "DeltaVirtualDelete" } }
       end
       if line.kind == "add" then
         has_add = true
@@ -37,10 +37,10 @@ function M.apply(buf, hunks, staged)
     for _, line in ipairs(hunk.lines) do
       if line.kind == "add" and row >= 0 and row < count then
         vim.api.nvim_buf_set_extmark(buf, M.namespace, row, 0, {
-          line_hl_group = changed and "ReviewChange" or "ReviewAdd",
+          line_hl_group = changed and "DeltaChange" or "DeltaAdd",
           sign_text = staged.lines[row] and "┃" or (changed and "~" or "+"),
-          sign_hl_group = staged.lines[row] and "ReviewStagedSign"
-            or (changed and "ReviewChangeSign" or "ReviewAddSign"),
+          sign_hl_group = staged.lines[row] and "DeltaStagedSign"
+            or (changed and "DeltaChangeSign" or "DeltaAddSign"),
           priority = 120,
         })
       end
@@ -56,7 +56,7 @@ function M.apply(buf, hunks, staged)
         virt_lines = deleted,
         virt_lines_above = not after,
         sign_text = not has_add and (staged.deletions[row] and "┃" or "-") or nil,
-        sign_hl_group = staged.deletions[row] and "ReviewStagedSign" or "ReviewDeleteSign",
+        sign_hl_group = staged.deletions[row] and "DeltaStagedSign" or "DeltaDeleteSign",
         priority = 119,
       })
     end

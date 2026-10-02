@@ -64,7 +64,7 @@ local function record(buf, before, after)
     history = {
       records = {},
       active = {},
-      group = vim.api.nvim_create_augroup("ReviewEOF" .. buf, { clear = true }),
+      group = vim.api.nvim_create_augroup("DeltaEOF" .. buf, { clear = true }),
     }
     histories[buf] = history
     vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI", "BufWritePre" }, {
@@ -73,7 +73,7 @@ local function record(buf, before, after)
       callback = function()
         M.sync(buf)
       end,
-      desc = "Restore review hunk EOF options on undo/redo",
+      desc = "Restore Delta hunk EOF options on undo/redo",
     })
     vim.api.nvim_create_autocmd({ "BufWipeout", "BufUnload" }, {
       buffer = buf,
@@ -125,7 +125,7 @@ function M.revert(buf, hunk)
   end
   local current = M.text(buf)
   local before = options(buf)
-  local result = require("review.diff").revert(current, hunk)
+  local result = require("delta.diff").revert(current, hunk)
   local replacement = {}
   for _, line in ipairs(hunk.lines) do
     if line.kind == "delete" then

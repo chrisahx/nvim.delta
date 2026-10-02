@@ -22,11 +22,11 @@ function M.setup(opts)
   M.options = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts or {})
   assert(
     M.options.sidebar.position == "left" or M.options.sidebar.position == "right",
-    "review: sidebar.position must be left or right"
+    "delta: sidebar.position must be left or right"
   )
   assert(
     type(M.options.sidebar.width) == "number" and M.options.sidebar.width > 0,
-    "review: sidebar.width must be positive"
+    "delta: sidebar.width must be positive"
   )
 end
 return M

@@ -1,14 +1,14 @@
-local git = require("review.git")
-local diff = require("review.diff")
-local decorations = require("review.decorations")
-local sidebar = require("review.sidebar")
-local config = require("review.config")
-local buffer = require("review.buffer")
+local git = require("delta.git")
+local diff = require("delta.diff")
+local decorations = require("delta.decorations")
+local sidebar = require("delta.sidebar")
+local config = require("delta.config")
+local buffer = require("delta.buffer")
 local M = { active = nil }
 local request = 0
 local actions = {}
 local function notify(message, level)
-  vim.notify("review: " .. message, level or vim.log.levels.ERROR)
+  vim.notify("delta: " .. message, level or vim.log.levels.ERROR)
 end
 local function live(s)
   return M.active == s
@@ -30,7 +30,7 @@ local function map_buffer(s, buf)
           "n",
           lhs,
           callback,
-          { buffer = buf, silent = true, desc = "Review: " .. action }
+          { buffer = buf, silent = true, desc = "Delta: " .. action }
         )
         local installed = vim.fn.maparg(lhs, "n", false, true)
         saved[#saved + 1] = { lhs = installed.lhs, previous = previous, callback = callback }
@@ -64,9 +64,9 @@ local function decorate(s, file)
       decorations.clear(buf)
       for row = 0, vim.api.nvim_buf_line_count(buf) - 1 do
         vim.api.nvim_buf_set_extmark(buf, decorations.namespace, row, 0, {
-          line_hl_group = "ReviewDelete",
+          line_hl_group = "DeltaDelete",
           sign_text = file.staged and not file.unstaged and "┃" or nil,
-          sign_hl_group = "ReviewStagedSign",
+          sign_hl_group = "DeltaStagedSign",
         })
       end
     else
@@ -83,7 +83,7 @@ local function decorate(s, file)
       decorations.apply(buf, file.hunks)
       if file.staged and not file.binary then
         local tick = vim.api.nvim_buf_get_changedtick(buf)
-        require("review.staging").load(s.root, file, buf, function(rows)
+        require("delta.staging").load(s.root, file, buf, function(rows)
           if
             not rows
             or not live(s)
@@ -168,7 +168,7 @@ function M.open(index)
       file.old = old
       local buf = vim.api.nvim_create_buf(false, true)
       s.deleted_buffers[buf] = true
-      vim.api.nvim_buf_set_name(buf, "review-deleted://" .. s.id .. "/" .. file.path)
+      vim.api.nvim_buf_set_name(buf, "delta-deleted://" .. s.id .. "/" .. file.path)
       local lines = vim.split(old, "\n", { plain = true })
       if lines[#lines] == "" then
         table.remove(lines)
@@ -187,7 +187,7 @@ function M.open(index)
     notify(
       "File missing or unsupported symlink/directory/submodule: "
         .. file.path
-        .. "; try :ReviewRefresh"
+        .. "; try :DeltaRefresh"
     )
     return
   end
@@ -276,7 +276,7 @@ end
 function M.refresh()
   local s = M.active
   if not s then
-    notify("No active review", vim.log.levels.WARN)
+    notify("No active Delta session", vim.log.levels.WARN)
     return
   end
   s.generation = s.generation + 1
@@ -298,7 +298,7 @@ function M.refresh()
     for _, file in ipairs(files) do
       present[file.path] = true
     end
-    -- Preserve dirty review buffers even if the filesystem has reverted to the base.
+    -- Preserve dirty Delta buffers even if the filesystem has reverted to the base.
     for _, old in ipairs(s.files) do
       if
         not present[old.path]
@@ -415,7 +415,7 @@ function M.start(base)
           }
           M.active = s
           sidebar.open(s, config.options, actions)
-          s.augroup = vim.api.nvim_create_augroup("ReviewSession", { clear = true })
+          s.augroup = vim.api.nvim_create_augroup("DeltaSession", { clear = true })
           vim.api.nvim_create_autocmd("BufWritePost", {
             group = s.augroup,
             callback = function(event)
@@ -582,7 +582,7 @@ actions.toggle_reviewed = function()
 end
 for _, action in ipairs({ "stage_hunk", "unstage_hunk", "discard_hunk", "restore_base_hunk" }) do
   actions[action] = function()
-    require("review.operations").run(action)
+    require("delta.operations").run(action)
   end
 end
 actions.refresh = M.refresh

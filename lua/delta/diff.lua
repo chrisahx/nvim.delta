@@ -1,19 +1,19 @@
 local M = {}
 
----@class ReviewLine
+---@class DeltaLine
 ---@field kind 'context'|'add'|'delete'
 ---@field text string
 ---@field no_newline? boolean
 
----@class ReviewHunk
+---@class DeltaHunk
 ---@field old_start integer
 ---@field old_count integer
 ---@field new_start integer
 ---@field new_count integer
----@field lines ReviewLine[]
+---@field lines DeltaLine[]
 
 ---@param patch string
----@return ReviewHunk[]
+---@return DeltaHunk[]
 function M.parse(patch)
   local hunks, current = {}, nil
   local old_seen, new_seen = 0, 0

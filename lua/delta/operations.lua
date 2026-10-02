@@ -1,26 +1,26 @@
-local git = require("review.git")
-local diff = require("review.diff")
-local buffer = require("review.buffer")
-local index = require("review.index")
+local git = require("delta.git")
+local diff = require("delta.diff")
+local buffer = require("delta.buffer")
+local index = require("delta.index")
 local M = {}
 local names = {
   stage_hunk = "Stage",
   unstage_hunk = "Unstage",
   discard_hunk = "Discard unstaged",
-  restore_base_hunk = "Restore from review base",
+  restore_base_hunk = "Restore from Delta base",
 }
 local function notify(message, level)
-  vim.notify("review: " .. message, level or vim.log.levels.WARN)
+  vim.notify("delta: " .. message, level or vim.log.levels.WARN)
 end
 local function entry_equal(a, b)
   return a.oid == b.oid and a.mode == b.mode
 end
 
 local function context(action)
-  local session = require("review.session")
+  local session = require("delta.session")
   local s = session.active
   if not s then
-    notify("No active review")
+    notify("No active Delta session")
     return
   end
   if s.operation then
@@ -36,7 +36,7 @@ local function context(action)
     end
   end
   if not file then
-    notify("Open a review source file before using a hunk action")
+    notify("Open a Delta source file before using a hunk action")
     return
   end
   local destructive = action == "discard_hunk" or action == "restore_base_hunk"
@@ -80,7 +80,7 @@ local function context(action)
       end
     elseif file.status ~= "D" then
       s.operation = nil
-      notify("File is missing; refresh the review")
+      notify("File is missing; refresh Delta")
       return
     end
     if disk and disk:find("\0", 1, true) then
@@ -175,11 +175,11 @@ local function choose(c, hunks, unstaged, callback)
         candidates[#candidates + 1] = hunk
       end
     end
-    -- A base-review hunk may contain several independent index hunks.
+    -- A base-Delta hunk may contain several independent index hunks.
     if #candidates == 0 and c.file.old then
-      local review = diff.compute(buffer.normalize(c.buf, c.file.old), c.current)
-      for _, review_hunk in ipairs(review) do
-        local first, last = span(review_hunk, count)
+      local delta_hunks = diff.compute(buffer.normalize(c.buf, c.file.old), c.current)
+      for _, delta_hunk in ipairs(delta_hunks) do
+        local first, last = span(delta_hunk, count)
         if c.cursor >= first and c.cursor <= last then
           for _, hunk in ipairs(hunks) do
             local start, stop = span(hunk, count, unstaged)
@@ -271,7 +271,7 @@ local function restore(c, old, entry)
         end
         c.file.reviewed = false
         c.finish("Hunk restored in buffer; :w to save, u to undo", vim.log.levels.INFO)
-        require("review.session").update_buffer(c.file)
+        require("delta.session").update_buffer(c.file)
       end
       if not entry then
         apply()
@@ -349,8 +349,8 @@ local function change_index(c, entry)
                 ok and (names[c.action] .. "d hunk") or apply_err,
                 ok and vim.log.levels.INFO or vim.log.levels.ERROR
               )
-              if ok and require("review.session").active == c.session then
-                require("review.session").refresh()
+              if ok and require("delta.session").active == c.session then
+                require("delta.session").refresh()
               end
             end
           )
@@ -385,7 +385,7 @@ local function change_index(c, entry)
 end
 
 function M.run(action)
-  assert(names[action], "Unknown review hunk action")
+  assert(names[action], "Unknown Delta hunk action")
   local c = context(action)
   if not c then
     return

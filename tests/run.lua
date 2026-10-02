@@ -15,7 +15,7 @@ local function test(name, fn)
   passed = passed + 1
   print("PASS " .. name)
 end
-local diff = require("review.diff")
+local diff = require("delta.diff")
 local cases = {
   { "simple addition", "a\n", "a\nb\n", 1, 0, 1 },
   { "simple deletion", "a\nb\nc\n", "a\nc\n", 1, 1, 0 },
@@ -68,7 +68,7 @@ test("binary content", function()
 end)
 
 test("deleted virtual line anchors and nonmutation", function()
-  local dec = require("review.decorations")
+  local dec = require("delta.decorations")
   local buf = vim.api.nvim_create_buf(false, true)
   for _, case in ipairs({
     { "a\nb\n", "b\n", 0, true },
@@ -89,7 +89,7 @@ test("deleted virtual line anchors and nonmutation", function()
 end)
 
 test("staged rows track insertions and conservatively handle mixed deletions", function()
-  local staging = require("review.staging")
+  local staging = require("delta.staging")
   local rows = staging.rows(
     diff.compute("a\n", "a\nb\nc\n"),
     diff.compute("a\nb\nc\n", "X\na\nb\nnew\nc\n"),
@@ -122,9 +122,9 @@ end
 local function wait(fn)
   assert(vim.wait(5000, fn, 10), "timed out waiting for async operation")
 end
-local review = require("review")
+local delta = require("delta")
 local function session()
-  return review.get_session()
+  return delta.get_session()
 end
 local function find(path)
   for i, file in ipairs(session().files) do
@@ -152,8 +152,8 @@ test("Git integration: staged, unstaged, added, deleted, untracked, literal path
   write("odd\tname.lua", { "return 2" })
   vim.fn.delete(temp .. "/deleted.lua")
   vim.cmd.cd(vim.fn.fnameescape(temp))
-  review.setup({ base = "main", use_merge_base = false })
-  review.start()
+  delta.setup({ base = "main", use_merge_base = false })
+  delta.start()
   wait(function()
     return session() and #session().files == 5
   end)
@@ -169,7 +169,7 @@ test("real buffers, refresh after edits, review state, navigation, cleanup", fun
   local buf = vim.fn.bufadd(temp .. "/source.lua")
   vim.fn.bufload(buf)
   vim.keymap.set("n", "]h", "<Nop>", { buffer = buf, desc = "existing mapping" })
-  require("review.session").open(index)
+  require("delta.session").open(index)
   wait(function()
     return #file.hunks > 0
   end)
@@ -177,16 +177,16 @@ test("real buffers, refresh after edits, review state, navigation, cleanup", fun
   eq(vim.bo[buf].buftype, "")
   eq(vim.bo[buf].modifiable, true)
   eq(file.hunks[1].lines[1].text, "local old = 1")
-  review.mark_reviewed()
+  delta.mark_reviewed()
   eq(file.reviewed, true)
-  review.toggle_reviewed()
+  delta.toggle_reviewed()
   eq(file.reviewed, false)
-  review.mark_reviewed()
-  eq(review.progress().reviewed, 1)
-  review.next_hunk()
-  review.prev_hunk()
+  delta.mark_reviewed()
+  eq(delta.progress().reviewed, 1)
+  delta.next_hunk()
+  delta.prev_hunk()
   vim.api.nvim_buf_set_lines(buf, 0, 1, false, { "local better = 4" })
-  review.refresh()
+  delta.refresh()
   wait(function()
     local f = find("source.lua")
     return f and f.hunks[1] and f.hunks[1].lines[3].text == "local better = 4"
@@ -197,7 +197,7 @@ test("real buffers, refresh after edits, review state, navigation, cleanup", fun
     return find("source.lua").signature ~= file.signature
   end)
   local marks =
-    vim.api.nvim_buf_get_extmarks(buf, require("review.decorations").namespace, 0, -1, {})
+    vim.api.nvim_buf_get_extmarks(buf, require("delta.decorations").namespace, 0, -1, {})
   assert(#marks > 0)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "local old = 1", "return old" })
   vim.cmd.write()
@@ -211,42 +211,42 @@ test("real buffers, refresh after edits, review state, navigation, cleanup", fun
   wait(function()
     return find("source.lua") and #find("source.lua").hunks > 0
   end)
-  review.next_file()
-  review.prev_file()
-  review.close()
+  delta.next_file()
+  delta.prev_file()
+  delta.close()
   eq(session(), nil)
   eq(vim.api.nvim_buf_is_valid(buf), true)
-  eq(#vim.api.nvim_buf_get_extmarks(buf, require("review.decorations").namespace, 0, -1, {}), 0)
+  eq(#vim.api.nvim_buf_get_extmarks(buf, require("delta.decorations").namespace, 0, -1, {}), 0)
   vim.api.nvim_buf_call(buf, function()
     eq(vim.fn.maparg("]h", "n", false, true).desc, "existing mapping")
   end)
 end)
 
 test("deleted file exception and async cancellation", function()
-  review.start("main")
+  delta.start("main")
   wait(function()
     return session() ~= nil
   end)
   local file, index = find("deleted.lua")
-  require("review.session").open(index)
+  require("delta.session").open(index)
   wait(function()
     return file.buf ~= nil
   end)
   eq(vim.bo[file.buf].buftype, "nofile")
   eq(vim.bo[file.buf].modifiable, false)
   eq(vim.api.nvim_buf_get_lines(file.buf, 0, -1, false), { "return 'deleted'" })
-  review.next_hunk()
+  delta.next_hunk()
   local deleted_buf = file.buf
   local orphan = vim.fn.bufadd(temp .. "/deleted.lua")
   vim.fn.bufload(orphan)
   vim.api.nvim_win_set_buf(session().source_win, orphan)
   eq(file.buf, deleted_buf)
-  require("review.session").open(index)
+  require("delta.session").open(index)
   eq(vim.api.nvim_get_current_buf(), deleted_buf)
-  review.close()
+  delta.close()
   eq(vim.api.nvim_buf_is_valid(deleted_buf), false)
-  review.start("main")
-  review.close()
+  delta.start("main")
+  delta.close()
   vim.wait(200, function()
     return false
   end)
@@ -254,11 +254,11 @@ test("deleted file exception and async cancellation", function()
 end)
 
 test("late content callbacks cannot resurrect a removed overlay", function()
-  review.start("main")
+  delta.start("main")
   wait(function()
     return session() ~= nil
   end)
-  local git_module = require("review.git")
+  local git_module = require("delta.git")
   local original, delayed = git_module.content, {}
   git_module.content = function(root, commit, file, callback)
     if file.path ~= "source.lua" then
@@ -272,12 +272,12 @@ test("late content callbacks cannot resurrect a removed overlay", function()
     end)
   end
   local file, index = find("source.lua")
-  require("review.session").open(index)
+  require("delta.session").open(index)
   wait(function()
     return #delayed > 0
   end)
   write("source.lua", { "local old = 1", "return old" })
-  review.refresh()
+  delta.refresh()
   wait(function()
     return not find("source.lua")
   end)
@@ -285,24 +285,24 @@ test("late content callbacks cannot resurrect a removed overlay", function()
     callback()
   end
   eq(
-    #vim.api.nvim_buf_get_extmarks(file.buf, require("review.decorations").namespace, 0, -1, {}),
+    #vim.api.nvim_buf_get_extmarks(file.buf, require("delta.decorations").namespace, 0, -1, {}),
     0
   )
   git_module.content = original
-  review.close()
+  delta.close()
 end)
 
 test("real empty file versus one blank line and no final newline", function()
   write("blank.lua", { "" })
   write("empty.lua", {})
   vim.fn.writefile({ "return 7" }, temp .. "/noeol.lua", "b")
-  review.start("main")
+  delta.start("main")
   wait(function()
     return session() ~= nil
   end)
   for _, path in ipairs({ "blank.lua", "empty.lua", "noeol.lua" }) do
     local file, index = find(path)
-    require("review.session").open(index)
+    require("delta.session").open(index)
     wait(function()
       return file.fingerprint ~= nil
     end)
@@ -315,7 +315,7 @@ test("real empty file versus one blank line and no final newline", function()
       eq(file.hunks[1].lines[1].no_newline, true)
     end
   end
-  review.close()
+  delta.close()
 end)
 
 test("base resolution, merge-base, invalid revision and repository errors", function()
@@ -333,7 +333,7 @@ test("base resolution, merge-base, invalid revision and repository errors", func
   local main = git({ "rev-parse", "HEAD" }):gsub("%s+$", "")
   git({ "checkout", "feature" })
   local result, error, done
-  require("review.git").resolve(temp, "main", true, function(value, err)
+  require("delta.git").resolve(temp, "main", true, function(value, err)
     result, error, done = value, err, true
   end)
   wait(function()
@@ -342,7 +342,7 @@ test("base resolution, merge-base, invalid revision and repository errors", func
   eq(error, nil)
   eq(result.commit, ancestor)
   done = false
-  require("review.git").resolve(temp, nil, false, function(value, err)
+  require("delta.git").resolve(temp, nil, false, function(value, err)
     result, error, done = value, err, true
   end)
   wait(function()
@@ -351,7 +351,7 @@ test("base resolution, merge-base, invalid revision and repository errors", func
   eq(result.name, "main")
   eq(result.commit, main)
   done = false
-  require("review.git").resolve(temp, "--invalid-revision", false, function(value, err)
+  require("delta.git").resolve(temp, "--invalid-revision", false, function(value, err)
     result, error, done = value, err, true
   end)
   wait(function()
@@ -360,7 +360,7 @@ test("base resolution, merge-base, invalid revision and repository errors", func
   eq(result, nil)
   assert(error:find("Invalid base revision", 1, true))
   done = false
-  require("review.git").root(vim.fs.dirname(temp), function(value, err)
+  require("delta.git").root(vim.fs.dirname(temp), function(value, err)
     result, error, done = value, err, true
   end)
   wait(function()
@@ -374,7 +374,7 @@ test("unresolved conflicts are rejected", function()
   local merged = vim.system({ "git", "-C", temp, "merge", "main" }):wait()
   assert(merged.code ~= 0)
   local result, error, done
-  require("review.git").files(temp, "main", function(value, err)
+  require("delta.git").files(temp, "main", function(value, err)
     result, error, done = value, err, true
   end)
   wait(function()

@@ -1,6 +1,6 @@
-local diff = require("review.diff")
-local git = require("review.git")
-local buffer = require("review.buffer")
+local diff = require("delta.diff")
+local git = require("delta.git")
+local buffer = require("delta.buffer")
 local M = {}
 
 -- Only index lines that survive unchanged in the buffer may be shown as staged.

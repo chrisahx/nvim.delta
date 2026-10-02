@@ -1,4 +1,4 @@
-local git = require("review.git")
+local git = require("delta.git")
 local M = {}
 
 function M.read(path)

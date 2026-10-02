@@ -1,7 +1,7 @@
 # delta.nvim
 
 Interactive Git review layered onto **your normal editable Neovim buffers**.
-The repository is named `delta.nvim`; the Lua namespace and commands are `review`.
+The plugin is named `delta.nvim`; the Lua namespace is `delta` and commands use the `Delta` prefix.
 This is not a side-by-side diff viewer, a copied source buffer, or a read-only
 review application.
 
@@ -13,7 +13,7 @@ review application.
 - Changed-files sidebar, wrapping file/hunk navigation, explicit reviewed state,
   and progress.
 - Staged **and** unstaged changes, plus nonignored untracked files.
-- Stage/unstage individual hunks; discard unstaged hunks or restore review-base
+- Stage/unstage individual hunks; discard unstaged hunks or restore Delta-base
   hunks with confirmation and Neovim undo.
 - Asynchronous Git processes, lazy base-content loading, refresh on save.
 - No runtime dependencies besides Git and Neovim.
@@ -38,13 +38,13 @@ Replace `USER` with the repository owner when publishing this repository.
 {
   "USER/delta.nvim",
   cmd = {
-    "Review", "ReviewClose", "ReviewRefresh", "ReviewToggleReviewed",
-    "ReviewMarkReviewed", "ReviewMarkUnreviewed",
-    "ReviewNextFile", "ReviewPrevFile", "ReviewNextHunk", "ReviewPrevHunk",
-    "ReviewStageHunk", "ReviewUnstageHunk", "ReviewDiscardHunk", "ReviewRestoreBaseHunk",
+    "Delta", "DeltaClose", "DeltaRefresh", "DeltaToggleReviewed",
+    "DeltaMarkReviewed", "DeltaMarkUnreviewed",
+    "DeltaNextFile", "DeltaPrevFile", "DeltaNextHunk", "DeltaPrevHunk",
+    "DeltaStageHunk", "DeltaUnstageHunk", "DeltaDiscardHunk", "DeltaRestoreBaseHunk",
   },
   config = function()
-    require("review").setup()
+    require("delta").setup()
   end,
 }
 ```
@@ -56,7 +56,7 @@ corresponding directory under your `stdpath("data")`). Commands work without
 calling `setup()`. For configuration, add this to `init.lua`:
 
 ```lua
-require("review").setup({ base = "main" })
+require("delta").setup({ base = "main" })
 ```
 
 For local development, add this repository to `runtimepath` before calling
@@ -66,7 +66,7 @@ For local development, add this repository to `runtimepath` before calling
 
 ```text
 nvim .
-:Review origin/main
+:Delta origin/main
 ```
 
 The sidebar lists changed files. Use `j`/`k` and `<CR>` to open one. The source
@@ -80,23 +80,23 @@ number and cannot be edited.
 ```
 
 Edit normally, then `:w`. Git file discovery and the overlay refresh
-automatically. `:ReviewRefresh` also refreshes without saving: already-listed
+automatically. `:DeltaRefresh` also refreshes without saving: already-listed
 loaded files are compared against their current buffer contents, including
 unsaved edits. Newly changed files are discovered from the **filesystem**, so
-save a previously unchanged file to include it in the review.
+save a previously unchanged file to include it in the Delta session.
 
 Use `<leader>rr` in the source or `r` in the sidebar to toggle reviewed state.
 Opening a file never marks it reviewed. The sidebar shows `N / total reviewed`.
-Review marks are invalidated when refresh detects changed file contents or
+Delta marks are invalidated when refresh detects changed file contents or
 filesystem metadata; they are not approval of future edits.
 
-`:ReviewClose` (or `q` in the sidebar) ends the session, clears overlays and review
+`:DeltaClose` (or `q` in the sidebar) ends the session, clears overlays and Delta
 mappings, and leaves your real source buffers and edits intact. Closing/wiping
 the sidebar also ends the session.
 
 ## Base selection and working-tree semantics
 
-`:Review <base>` overrides `setup().base`. A base can be a local branch, remote
+`:Delta <base>` overrides `setup().base`. A base can be a local branch, remote
 tracking branch, tag, or arbitrary commit/revision expression. Without an explicit
 or configured base, candidates are tried in this order:
 
@@ -110,14 +110,14 @@ By default, `use_merge_base = true` resolves the comparison commit to
 to compare directly against the resolved base commit.
 
 The comparison commit is pinned for the session. Refresh does **not** re-resolve
-moving refs; restart `:Review` after switching branches or updating the base.
+moving refs; restart `:Delta` after switching branches or updating the base.
 The target is the current working tree, not the index: changes already committed
 on the branch, staged changes, unstaged changes, and untracked files are visible.
 Ignored untracked files are excluded. Only explicit stage/unstage commands modify
 the Git index. Nothing commits, checks out, or writes source files on your behalf.
 
 A refresh discovers all filesystem changes in the repository, removes files that
-now match the base, updates progress, and reapplies overlays to loaded review
+now match the base, updates progress, and reapplies overlays to loaded Delta
 buffers. If the current file becomes unchanged, its buffer stays open and editable;
 the sidebar selects another entry without stealing focus. File navigation then
 continues through the remaining entries. Unsaved previously-listed buffers are
@@ -130,19 +130,19 @@ buffer, with the cursor on the relevant change:
 
 | Action | Comparison / effect |
 | --- | --- |
-| `:ReviewStageHunk` | Index → **saved filesystem**; apply the selected hunk to the index |
-| `:ReviewUnstageHunk` | `HEAD` → index; reverse the selected staged hunk in the index |
-| `:ReviewDiscardHunk` | Index → current buffer; restore that hunk from the index |
-| `:ReviewRestoreBaseHunk` | Review base → current buffer; restore that hunk from the pinned base |
+| `:DeltaStageHunk` | Index → **saved filesystem**; apply the selected hunk to the index |
+| `:DeltaUnstageHunk` | `HEAD` → index; reverse the selected staged hunk in the index |
+| `:DeltaDiscardHunk` | Index → current buffer; restore that hunk from the index |
+| `:DeltaRestoreBaseHunk` | Delta base → current buffer; restore that hunk from the pinned base |
 
-**Discard preserves staged changes.** Restoring from the review base is deliberately
+**Discard preserves staged changes.** Restoring from the Delta base is deliberately
 separate: it can reverse changes already committed on your branch, or changes
 staged in the index, but only in the working buffer. Neither buffer restore action
 modifies the index. Stage/unstage never modify your working file or buffer.
 
-The review overlay always compares to the review base, so its hunks may differ
+The Delta overlay always compares to the Delta base, so its hunks may differ
 from index/staging hunks. Actions recompute the appropriate diff. A hunk under the
-cursor is selected; otherwise, candidates overlapping the review hunk are used.
+cursor is selected; otherwise, candidates overlapping the Delta hunk are used.
 If there is no overlap, or several candidates need choosing, `vim.ui.select()`
 shows a picker with working-buffer line numbers. Unstage positions account for
 unstaged line insertions/deletions; committed review changes alone have nothing
@@ -154,7 +154,7 @@ text hunk are staged/unstaged along with that hunk.
 if another process changed the file, reload/reconcile it before staging. Unstage
 can operate with unsaved buffer edits because it touches only the index.
 
-Both discard and review-base restore always ask for confirmation, with **Cancel**
+Both discard and Delta-base restore always ask for confirmation, with **Cancel**
 first. They replace just the selected region in the real source buffer, preserve
 unrelated edits, mark it unreviewed, and immediately update the overlay. Use `u`
 to undo, or `:w` to save the result to disk. EOF newline changes follow undo/redo
@@ -165,17 +165,17 @@ The sidebar displays `[SU]`: `S` means staged changes relative to `HEAD`, `U` me
 unstaged/untracked filesystem changes relative to the index; `-` means none.
 For example, `○ M [S-] source.lua` has staged changes only. These flags refresh
 on save, manual refresh, and stage/unstage; unsaved edits are not filesystem state.
-The `M`/`A`/`D` column still describes the review-base comparison.
+The `M`/`A`/`D` column still describes the Delta-base comparison.
 
-Source gutter signs also reflect staging: ordinary review changes use `+`, `~`,
+Source gutter signs also reflect staging: ordinary Delta changes use `+`, `~`,
 or `-`; currently staged changes use `┃` linked to the theme's green
 `DiagnosticOk` highlight. This is calculated per line, not per file or review
 hunk. If you edit a staged line again, its unstaged replacement uses the ordinary
 sign after refresh, while other staged lines remain green. Committed branch
-changes are not currently staged and retain their ordinary review signs.
+changes are not currently staged and retain their ordinary Delta signs.
 Staging/unstaging refreshes these indicators automatically; save or manually
 refresh after editing or changing the index externally. Line backgrounds and
-virtual deletions still describe the review-base diff, independently of staging.
+virtual deletions still describe the Delta-base diff, independently of staging.
 
 Index mutations use `git apply --cached` (reversed for unstage) with the normal
 Git index lock, a private alternate index, and atomic publication. Buffer/session,
@@ -189,18 +189,18 @@ are blocked until then.
 
 | Command | Action |
 | --- | --- |
-| `:Review [base]` | Start/replace the repository's review session |
-| `:ReviewClose` | End review and clean up |
-| `:ReviewRefresh` | Refresh discovery and loaded-file overlays |
-| `:ReviewToggleReviewed` | Toggle the current/selected file |
-| `:ReviewMarkReviewed` | Mark the current/selected file reviewed |
-| `:ReviewMarkUnreviewed` | Mark it unreviewed |
-| `:ReviewNextFile`, `:ReviewPrevFile` | Open next/previous changed file, wrapping |
-| `:ReviewNextHunk`, `:ReviewPrevHunk` | Jump between hunk anchors, wrapping |
-| `:ReviewStageHunk` | Stage selected unstaged hunk (save first) |
-| `:ReviewUnstageHunk` | Unstage selected staged hunk |
-| `:ReviewDiscardHunk` | Confirm and restore hunk from the index, in buffer |
-| `:ReviewRestoreBaseHunk` | Confirm and restore hunk from the review base, in buffer |
+| `:Delta [base]` | Start/replace the repository's Delta session |
+| `:DeltaClose` | End Delta and clean up |
+| `:DeltaRefresh` | Refresh discovery and loaded-file overlays |
+| `:DeltaToggleReviewed` | Toggle the current/selected file |
+| `:DeltaMarkReviewed` | Mark the current/selected file reviewed |
+| `:DeltaMarkUnreviewed` | Mark it unreviewed |
+| `:DeltaNextFile`, `:DeltaPrevFile` | Open next/previous changed file, wrapping |
+| `:DeltaNextHunk`, `:DeltaPrevHunk` | Jump between hunk anchors, wrapping |
+| `:DeltaStageHunk` | Stage selected unstaged hunk (save first) |
+| `:DeltaUnstageHunk` | Unstage selected staged hunk |
+| `:DeltaDiscardHunk` | Confirm and restore hunk from the index, in buffer |
+| `:DeltaRestoreBaseHunk` | Confirm and restore hunk from the Delta base, in buffer |
 
 Hunk navigation uses real source line numbers. A pure deletion anchors to the
 following real line, or the last line for an EOF deletion. Deleted virtual text
@@ -208,7 +208,7 @@ is not a cursor destination. If there are no hunks/files, navigation is a no-op.
 
 ## Mappings
 
-Source mappings are **buffer-local** and only installed on files in the review.
+Source mappings are **buffer-local** and only installed on files in the Delta session.
 Existing local mappings are restored on close (unless you replaced the mapping
 while reviewing). Global mappings are never modified. Set any mapping to `false`
 or `""` to disable it.
@@ -221,7 +221,7 @@ or `""` to disable it.
 | `<leader>rs` | Stage hunk |
 | `<leader>ru` | Unstage hunk |
 | `<leader>rd` | Discard unstaged hunk (confirmation) |
-| `<leader>rb` | Restore review-base hunk (confirmation) |
+| `<leader>rb` | Restore Delta-base hunk (confirmation) |
 
 | Sidebar mapping | Action |
 | --- | --- |
@@ -235,7 +235,7 @@ or `""` to disable it.
 ## Configuration (all defaults)
 
 ```lua
-require("review").setup({
+require("delta").setup({
   base = nil,                    -- autodetect, or a revision string
   use_merge_base = true,         -- false compares directly to base
   sidebar = {
@@ -272,23 +272,23 @@ manual refresh. Correct refresh is preferred over offset bookkeeping.
 ### Lua API
 
 ```lua
-local review = require("review")
-review.start("main") -- asynchronous
-review.refresh()     -- asynchronous
-review.close()
-review.next_file()
-review.prev_file()
-review.next_hunk()
-review.prev_hunk()
-review.toggle_reviewed()
-review.mark_reviewed()
-review.mark_unreviewed()
-review.stage_hunk()
-review.unstage_hunk()
-review.discard_hunk()       -- confirmation, buffer-only; :w to save
-review.restore_base_hunk()  -- confirmation, buffer-only; :w to save
-local progress = review.progress() -- { reviewed = 4, total = 11 }
-local session = review.get_session() -- nil when inactive; inspect, do not mutate
+local delta = require("delta")
+delta.start("main") -- asynchronous
+delta.refresh()     -- asynchronous
+delta.close()
+delta.next_file()
+delta.prev_file()
+delta.next_hunk()
+delta.prev_hunk()
+delta.toggle_reviewed()
+delta.mark_reviewed()
+delta.mark_unreviewed()
+delta.stage_hunk()
+delta.unstage_hunk()
+delta.discard_hunk()       -- confirmation, buffer-only; :w to save
+delta.restore_base_hunk()  -- confirmation, buffer-only; :w to save
+local progress = delta.progress() -- { reviewed = 4, total = 11 }
+local session = delta.get_session() -- nil when inactive; inspect, do not mutate
 ```
 
 Use these functions in your own mappings. `get_session()` exposes repository root,
@@ -303,10 +303,10 @@ Default links are overrideable with `nvim_set_hl` / colorscheme definitions:
 
 | Group | Default link |
 | --- | --- |
-| `ReviewAdd`, `ReviewAddSign` | `DiffAdd` |
-| `ReviewDelete`, `ReviewDeleteSign`, `ReviewVirtualDelete` | `DiffDelete` |
-| `ReviewChange`, `ReviewChangeSign` | `DiffChange` |
-| `ReviewStagedSign` | `DiagnosticOk` (staged `┃` gutter indicator) |
+| `DeltaAdd`, `DeltaAddSign` | `DiffAdd` |
+| `DeltaDelete`, `DeltaDeleteSign`, `DeltaVirtualDelete` | `DiffDelete` |
+| `DeltaChange`, `DeltaChangeSign` | `DiffChange` |
+| `DeltaStagedSign` | `DiagnosticOk` (staged `┃` gutter indicator) |
 
 Definitions use `default = true` and are reapplied on `ColorScheme`.
 
@@ -319,7 +319,7 @@ Definitions use `default = true` and are reapplied on `ColorScheme`.
 - `session.lua`: explicitly owned session state, async invalidation tokens,
   buffer lifecycle, refresh, mapping restoration, navigation and progress.
 - `operations.lua`: fresh action-specific diffs, hunk selection, confirmation,
-  safety checks, staging/unstaging/discard/review-base restore.
+  safety checks, staging/unstaging/discard/Delta-base restore.
 - `index.lua`: raw filesystem snapshots and locked alternate-index transactions.
 - `staging.lua`: maps staged index hunks into working-buffer lines, excluding
   unstaged replacements, for accurate per-line gutter indicators.
@@ -335,24 +335,24 @@ external diff drivers/textconv and manual offset maintenance.
 ## Limitations / deliberate v1 choices
 
 - Fully deleted files use a **read-only scratch buffer containing the base file**,
-  highlighted as deleted. This exception is explicit (`review-deleted://…` buffer
+  highlighted as deleted. This exception is explicit (`delta-deleted://…` buffer
   name); existing regular files always use their real buffers.
 - Renames appear as deletion + addition (`--no-renames`), not `R` entries.
 - Binary content has no inline overlay. Gitlinks/submodule directories and symlinks
   are listed but cannot be opened for inline review; a warning explains this.
 - Unresolved merge conflicts are rejected. There is no conflict resolution UI.
-- Hunk actions require an open review file and ordinary UTF-8 text (Unix or DOS
+- Hunk actions require an open Delta file and ordinary UTF-8 text (Unix or DOS
   line endings). Changing UTF-8 BOM presence via buffer restore is rejected;
-  existing BOMs are preserved. Files outside the base-review list are not accessible
+  existing BOMs are preserved. Files outside the base-delta list are not accessible
   through these commands. Binary files, symlinks, and submodules are not supported.
 - Fully deleted files support stage/unstage from their read-only representation.
-  Buffer-only discard/review-base restore requires an existing editable source
+  Buffer-only discard/Delta-base restore requires an existing editable source
   file; use Git's file-level restore outside the plugin to recreate a missing file.
-- Review state is in-memory only. No persistent state, automatic approval,
+- Delta state is in-memory only. No persistent state, automatic approval,
   branch-change watcher, filesystem watcher, or typing-time diff calculation.
 - Text comparisons use Neovim's decoded buffer text; unusual encodings, Git
   clean/smudge filters, and custom attributes may not exactly reproduce Git's
-  byte-level diff. Review ordinary text files; binary/encoded workflows need care.
+  byte-level diff. Use Delta on ordinary text files; binary/encoded workflows need care.
 - Very large text files or deletions can take time to diff/render on the main
   thread. Git discovery/content retrieval is asynchronous and full diffs are lazy.
 - Mapping configuration is intended to be set before starting a session.
@@ -371,24 +371,24 @@ virtual deletion placement without source mutation, and temporary Git repositori
 real buffers, staged/unstaged/untracked/deleted files, unusual path characters,
 manual/automatic refresh, progress, navigation, mapping restoration and cancellation.
 Hunk-operation tests cover partial stage/unstage, index-preserving discard,
-committed review-base restore, unsaved/stale buffers, confirmation cancellation,
+committed Delta-base restore, unsaved/stale buffers, confirmation cancellation,
 quoted paths, intent-to-add, empty/executable/deleted files, EOF undo/redo branches,
 external index updates, lock cleanup, session-close cancellation, DOS/BOM text,
 missing indexes, split indexes, linked-worktree isolation, and staged gutter
 updates for additions/modifications/deletions, shifted lines, and unsaved edits.
 
 For a manual smoke test, change/add/delete files in a disposable Git repository,
-run `:Review main`, and confirm that deleted lines have no real line numbers.
+run `:Delta main`, and confirm that deleted lines have no real line numbers.
 Edit an actual source line, save, check the updated overlay, mark it reviewed,
-then `:ReviewClose`. Check that LSP, undo, source buffer contents, and your original
+then `:DeltaClose`. Check that LSP, undo, source buffer contents, and your original
 mappings still work. Use `use_merge_base = false` to compare directly to `main`.
 
 For hunk actions, make two separated changes in a tracked file and save. Run
-`:ReviewStageHunk` on one and verify with `git diff --cached`; the other change
-should remain in `git diff`. Run `:ReviewUnstageHunk` to reverse just that staging.
-Try `:ReviewDiscardHunk`, confirm, check that only the selected buffer region was
+`:DeltaStageHunk` on one and verify with `git diff --cached`; the other change
+should remain in `git diff`. Run `:DeltaUnstageHunk` to reverse just that staging.
+Try `:DeltaDiscardHunk`, confirm, check that only the selected buffer region was
 restored, then `u` to undo or `:w` to persist. For the distinction between index and
-base restore, commit a branch change and confirm that `:ReviewRestoreBaseHunk`
+base restore, commit a branch change and confirm that `:DeltaRestoreBaseHunk`
 can reverse it in the buffer without changing the commit or index.
 
 ## License

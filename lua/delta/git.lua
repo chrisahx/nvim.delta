@@ -39,7 +39,7 @@ function M.resolve(root, base, merge, callback)
   local function attempt(i)
     local name = candidates[i]
     if not name then
-      callback(nil, "No default base found; pass a commit or branch to :Review")
+      callback(nil, "No default base found; pass a commit or branch to :Delta")
       return
     end
     M.run(
@@ -99,7 +99,7 @@ local function list_files(root, commit, callback)
       for i = 1, #parts, 2 do
         local status, path = parts[i], parts[i + 1]
         if status == "U" then
-          callback(nil, "Resolve merge conflicts before starting a review")
+          callback(nil, "Resolve merge conflicts before starting Delta")
           return
         end
         if path then
@@ -144,7 +144,7 @@ function M.files(root, commit, callback)
       return
     end
     if out ~= "" then
-      callback(nil, "Resolve merge conflicts before starting a review")
+      callback(nil, "Resolve merge conflicts before starting Delta")
       return
     end
     list_files(root, commit, function(files, files_err)
@@ -241,7 +241,7 @@ function M.hunk_diff(root, path, cached, callback)
     local first = out:find("@@ -", 1, true)
     callback({
       header = first and out:sub(1, first - 1) or out,
-      hunks = require("review.diff").parse(out),
+      hunks = require("delta.diff").parse(out),
     })
   end)
 end
@@ -269,7 +269,7 @@ function M.addition(path, contents, executable)
       .. (executable and "100755" or "100644")
       .. "\n"
       .. (contents == "" and "" or "--- /dev/null\n+++ " .. b .. "\n"),
-    hunks = require("review.diff").compute("", contents),
+    hunks = require("delta.diff").compute("", contents),
   }
 end
 return M

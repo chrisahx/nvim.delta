@@ -41,13 +41,26 @@ review application.
 
 ## Installation
 
-Replace `USER` with the repository owner when publishing this repository.
+### Built-in Neovim packages (`vim.pack`)
+
+If your Neovim version includes the built-in package manager, add this to your
+Neovim config:
+
+```lua
+vim.pack.add({
+  "https://github.com/chrisahx/nvim.delta",
+})
+
+require("delta").setup()
+```
+
+```
 
 ### lazy.nvim
 
 ```lua
 {
-  "USER/delta.nvim",
+  "chrisahx/nvim.delta",
   cmd = {
     "Delta", "DeltaClose", "DeltaRefresh", "DeltaToggleReviewed",
     "DeltaMarkReviewed", "DeltaMarkUnreviewed",
@@ -62,7 +75,7 @@ Replace `USER` with the repository owner when publishing this repository.
 
 ### Native packages
 
-Clone into `~/.local/share/nvim/site/pack/plugins/start/delta.nvim` (or the
+Clone into `~/.local/share/nvim/site/pack/plugins/start/nvim.delta` (or the
 corresponding directory under your `stdpath("data")`). Commands work without
 calling `setup()`. For configuration, add this to `init.lua`:
 

@@ -1,13 +1,20 @@
 # delta.nvim
 
+</br>
+</br>
+
+> [!WARNING]
+> This tool is 100% vibecoded. It is designed purely as a personal tool, and I do
+> not advise anyone to use it without reading through the code first.
+
+</br>
+</br>
+
 Interactive Git review layered onto **your normal editable Neovim buffers**.
 The plugin is named `delta.nvim`; the Lua namespace is `delta` and commands use the `Delta` prefix.
 This is not a side-by-side diff viewer, a copied source buffer, or a read-only
 review application.
 
-> [!WARNING]
-> This tool is 100% vibecoded. It is designed purely as a personal tool, and I do
-> not advise anyone to use it without reading through the code first.
 
 - Full source files, with ordinary LSP, Treesitter, diagnostics, completion, undo,
   formatting, and filetype plugins.

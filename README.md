@@ -79,7 +79,7 @@ corresponding directory under your `stdpath("data")`). Commands work without
 calling `setup()`. For configuration, add this to `init.lua`:
 
 ```lua
-require("delta").setup({ base = "main" })
+require("delta").setup()
 ```
 
 For local development, add this repository to `runtimepath` before calling

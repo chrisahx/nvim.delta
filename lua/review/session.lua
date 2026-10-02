@@ -3,6 +3,7 @@ local diff = require("review.diff")
 local decorations = require("review.decorations")
 local sidebar = require("review.sidebar")
 local config = require("review.config")
+local buffer = require("review.buffer")
 local M = { active = nil }
 local request = 0
 local actions = {}
@@ -12,21 +13,7 @@ end
 local function live(s)
   return M.active == s
 end
-local function text(buf)
-  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  local result = table.concat(lines, "\n")
-  local empty = #lines == 1
-    and lines[1] == ""
-    and vim.api.nvim_buf_call(buf, function()
-      -- Both an empty file and a file containing one newline have { "" } lines.
-      -- wordcount observes Neovim's internal empty-buffer flag.
-      return vim.fn.wordcount().bytes == 0
-    end)
-  if vim.bo[buf].endofline and not empty then
-    result = result .. "\n"
-  end
-  return result
-end
+local text = buffer.text
 
 local function map_buffer(s, buf)
   if s.buffers[buf] then
@@ -39,13 +26,14 @@ local function map_buffer(s, buf)
       if lhs and lhs ~= "" and actions[action] then
         local previous = vim.fn.maparg(lhs, "n", false, true)
         local callback = actions[action]
-        saved[#saved + 1] = { lhs = lhs, previous = previous, callback = callback }
         vim.keymap.set(
           "n",
           lhs,
           callback,
           { buffer = buf, silent = true, desc = "Review: " .. action }
         )
+        local installed = vim.fn.maparg(lhs, "n", false, true)
+        saved[#saved + 1] = { lhs = installed.lhs, previous = previous, callback = callback }
       end
     end
   end)
@@ -75,13 +63,11 @@ local function decorate(s, file)
       file.hunks = diff.compute(old, "")
       decorations.clear(buf)
       for row = 0, vim.api.nvim_buf_line_count(buf) - 1 do
-        vim.api.nvim_buf_set_extmark(
-          buf,
-          decorations.namespace,
-          row,
-          0,
-          { line_hl_group = "ReviewDelete" }
-        )
+        vim.api.nvim_buf_set_extmark(buf, decorations.namespace, row, 0, {
+          line_hl_group = "ReviewDelete",
+          sign_text = file.staged and not file.unstaged and "┃" or nil,
+          sign_hl_group = "ReviewStagedSign",
+        })
       end
     else
       local current = text(buf)
@@ -92,8 +78,26 @@ local function decorate(s, file)
         file.reviewed = false
       end
       file.fingerprint = fingerprint
-      file.hunks, file.binary = diff.compute(old, current)
+      file.hunks, file.binary = diff.compute(buffer.normalize(buf, old), current)
+      file.staged_rows = nil
       decorations.apply(buf, file.hunks)
+      if file.staged and not file.binary then
+        local tick = vim.api.nvim_buf_get_changedtick(buf)
+        require("review.staging").load(s.root, file, buf, function(rows)
+          if
+            not rows
+            or not live(s)
+            or s.generation ~= generation
+            or token ~= file.request
+            or not vim.api.nvim_buf_is_loaded(buf)
+            or vim.api.nvim_buf_get_changedtick(buf) ~= tick
+          then
+            return
+          end
+          file.staged_rows = rows
+          decorations.apply(buf, file.hunks, rows)
+        end)
+      end
       if file.binary and not file.warned then
         file.warned = true
         notify("Binary content has no inline overlay: " .. file.path, vim.log.levels.WARN)
@@ -212,20 +216,56 @@ function M.close()
   for buf, maps in pairs(s.buffers) do
     if vim.api.nvim_buf_is_valid(buf) then
       decorations.clear(buf)
-      vim.api.nvim_buf_call(buf, function()
-        for _, mapping in ipairs(maps) do
-          local current = vim.fn.maparg(mapping.lhs, "n", false, true)
-          if current.callback == mapping.callback and current.buffer == 1 then
+      local current_maps = vim.api.nvim_buf_get_keymap(buf, "n")
+      for _, mapping in ipairs(maps) do
+        for _, current in ipairs(current_maps) do
+          if current.lhs == mapping.lhs and current.callback == mapping.callback then
             pcall(vim.keymap.del, "n", mapping.lhs, { buffer = buf })
-            if mapping.previous.buffer == 1 then
-              vim.fn.mapset("n", false, mapping.previous)
+            local previous = mapping.previous
+            if previous.buffer == 1 then
+              if vim.api.nvim_buf_is_loaded(buf) then
+                vim.api.nvim_buf_call(buf, function()
+                  vim.fn.mapset("n", false, previous)
+                end)
+              else
+                -- Do not reload a missing/deleted file just to restore a mapping.
+                local rhs = (previous.rhs or ""):gsub("<SID>", "<SNR>" .. previous.sid .. "_")
+                vim.api.nvim_buf_set_keymap(buf, "n", previous.lhs, rhs, {
+                  callback = previous.callback,
+                  noremap = previous.noremap == 1,
+                  silent = previous.silent == 1,
+                  expr = previous.expr == 1,
+                  nowait = previous.nowait == 1,
+                  script = previous.script == 1,
+                  desc = previous.desc,
+                })
+              end
             end
           end
         end
-      end)
+      end
     end
   end
   sidebar.close(s)
+  for _, win in ipairs(vim.api.nvim_list_wins()) do
+    if s.deleted_buffers[vim.api.nvim_win_get_buf(win)] then
+      local replacement
+      for _, candidate in ipairs(vim.api.nvim_list_bufs()) do
+        local name = vim.api.nvim_buf_get_name(candidate)
+        if
+          vim.api.nvim_buf_is_loaded(candidate)
+          and vim.bo[candidate].buftype == ""
+          and (name == "" or vim.uv.fs_stat(name))
+          and not s.deleted_buffers[candidate]
+        then
+          replacement = candidate
+          break
+        end
+      end
+      -- Avoid Neovim implicitly reloading a now-missing alternate source buffer.
+      pcall(vim.api.nvim_win_set_buf, win, replacement or vim.api.nvim_create_buf(true, false))
+    end
+  end
   for buf in pairs(s.deleted_buffers) do
     if vim.api.nvim_buf_is_valid(buf) then
       pcall(vim.api.nvim_buf_delete, buf, { force = true })
@@ -267,7 +307,7 @@ function M.refresh()
         and old.buf
         and vim.api.nvim_buf_is_loaded(old.buf)
         and vim.bo[old.buf].modified
-        and text(old.buf) ~= old.old
+        and text(old.buf) ~= buffer.normalize(old.buf, old.old)
       then
         files[#files + 1] = {
           path = old.path,
@@ -499,6 +539,13 @@ function M.move_hunk(direction)
   vim.cmd("normal! zv")
 end
 
+function M.update_buffer(file)
+  local s = M.active
+  if s then
+    decorate(s, file)
+  end
+end
+
 function M.progress()
   local s, done = M.active, 0
   if not s then
@@ -532,6 +579,11 @@ actions.prev_hunk = function()
 end
 actions.toggle_reviewed = function()
   M.reviewed()
+end
+for _, action in ipairs({ "stage_hunk", "unstage_hunk", "discard_hunk", "restore_base_hunk" }) do
+  actions[action] = function()
+    require("review.operations").run(action)
+  end
 end
 actions.refresh = M.refresh
 actions.close = M.close

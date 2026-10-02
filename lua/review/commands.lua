@@ -13,6 +13,10 @@ function M.register()
     ReviewPrevFile = "prev_file",
     ReviewNextHunk = "next_hunk",
     ReviewPrevHunk = "prev_hunk",
+    ReviewStageHunk = "stage_hunk",
+    ReviewUnstageHunk = "unstage_hunk",
+    ReviewDiscardHunk = "discard_hunk",
+    ReviewRestoreBaseHunk = "restore_base_hunk",
   }) do
     vim.api.nvim_create_user_command(command, function()
       require("review")[action]()

@@ -58,6 +58,66 @@ function M.compute(old, new)
     false
 end
 
+-- Serialize one hunk without altering Git's file header or newline markers.
+function M.patch(hunk)
+  local lines = {
+    string.format(
+      "@@ -%d,%d +%d,%d @@",
+      hunk.old_start,
+      hunk.old_count,
+      hunk.new_start,
+      hunk.new_count
+    ),
+  }
+  local prefixes = { add = "+", delete = "-", context = " " }
+  for _, line in ipairs(hunk.lines) do
+    lines[#lines + 1] = prefixes[line.kind] .. line.text
+    if line.no_newline then
+      lines[#lines + 1] = "\\ No newline at end of file"
+    end
+  end
+  return table.concat(lines, "\n") .. "\n"
+end
+
+-- Undo a zero-context hunk in a text snapshot, preserving final-newline state.
+function M.revert(current, hunk)
+  local records = {}
+  for content, newline in current:gmatch("([^\n]*)(\n?)") do
+    if content ~= "" or newline ~= "" then
+      records[#records + 1] = content .. newline
+    end
+  end
+  local start = hunk.new_count == 0 and hunk.new_start or hunk.new_start - 1
+  for _ = 1, hunk.new_count do
+    table.remove(records, start + 1)
+  end
+  local offset = 0
+  for _, line in ipairs(hunk.lines) do
+    if line.kind == "delete" then
+      offset = offset + 1
+      table.insert(records, start + offset, line.text .. (line.no_newline and "" or "\n"))
+    end
+  end
+  return table.concat(records)
+end
+
+-- Map an index line to the working buffer through freshly computed unstaged hunks.
+function M.map_line(line, hunks)
+  local offset = 0
+  for _, hunk in ipairs(hunks) do
+    local first = hunk.old_count == 0 and hunk.old_start + 1 or hunk.old_start
+    if line < first then
+      break
+    end
+    if hunk.old_count > 0 and line < first + hunk.old_count then
+      local target = hunk.new_count == 0 and hunk.new_start + 1 or hunk.new_start
+      return target + math.min(line - first, math.max(0, hunk.new_count - 1))
+    end
+    offset = offset + hunk.new_count - hunk.old_count
+  end
+  return math.max(1, line + offset)
+end
+
 -- A pure deletion's new_start is the line BEFORE the deletion, unlike additions.
 function M.row(hunk, count)
   local row = hunk.new_count == 0 and hunk.new_start or hunk.new_start - 1

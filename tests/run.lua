@@ -88,6 +88,25 @@ test("deleted virtual line anchors and nonmutation", function()
   vim.api.nvim_buf_delete(buf, { force = true })
 end)
 
+test("staged rows track insertions and conservatively handle mixed deletions", function()
+  local staging = require("review.staging")
+  local rows = staging.rows(
+    diff.compute("a\n", "a\nb\nc\n"),
+    diff.compute("a\nb\nc\n", "X\na\nb\nnew\nc\n"),
+    5
+  )
+  eq(rows.lines, { [2] = true, [4] = true })
+  for _, case in ipairs({
+    { "old\na\n", "a\n", "a\n", { [0] = true } },
+    { "old\na\n", "a\n", "new\na\n", {} },
+    { "a\nb\n", "a\n", "a\n", { [0] = true } },
+    { "a\nb\n", "a\n", "", {} },
+  }) do
+    rows = staging.rows(diff.compute(case[1], case[2]), diff.compute(case[2], case[3]), 1)
+    eq(rows.deletions, case[4])
+  end
+end)
+
 local temp = vim.fn.tempname()
 vim.fn.mkdir(temp, "p")
 local function git(args)

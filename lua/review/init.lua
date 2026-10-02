@@ -34,6 +34,18 @@ end
 function M.prev_hunk()
   require("review.session").move_hunk(-1)
 end
+function M.stage_hunk()
+  require("review.operations").run("stage_hunk")
+end
+function M.unstage_hunk()
+  require("review.operations").run("unstage_hunk")
+end
+function M.discard_hunk()
+  require("review.operations").run("discard_hunk")
+end
+function M.restore_base_hunk()
+  require("review.operations").run("restore_base_hunk")
+end
 function M.progress()
   return require("review.session").progress()
 end

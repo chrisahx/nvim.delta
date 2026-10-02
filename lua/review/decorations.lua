@@ -8,6 +8,7 @@ function M.highlights()
     ReviewDeleteSign = "DiffDelete",
     ReviewChangeSign = "DiffChange",
     ReviewVirtualDelete = "DiffDelete",
+    ReviewStagedSign = "DiagnosticOk",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = link })
   end
@@ -17,7 +18,8 @@ function M.clear(buf)
     vim.api.nvim_buf_clear_namespace(buf, M.namespace, 0, -1)
   end
 end
-function M.apply(buf, hunks)
+function M.apply(buf, hunks, staged)
+  staged = staged or { lines = {}, deletions = {} }
   M.clear(buf)
   local count = vim.api.nvim_buf_line_count(buf)
   for _, hunk in ipairs(hunks) do
@@ -36,8 +38,9 @@ function M.apply(buf, hunks)
       if line.kind == "add" and row >= 0 and row < count then
         vim.api.nvim_buf_set_extmark(buf, M.namespace, row, 0, {
           line_hl_group = changed and "ReviewChange" or "ReviewAdd",
-          sign_text = changed and "~" or "+",
-          sign_hl_group = changed and "ReviewChangeSign" or "ReviewAddSign",
+          sign_text = staged.lines[row] and "┃" or (changed and "~" or "+"),
+          sign_hl_group = staged.lines[row] and "ReviewStagedSign"
+            or (changed and "ReviewChangeSign" or "ReviewAddSign"),
           priority = 120,
         })
       end
@@ -48,11 +51,12 @@ function M.apply(buf, hunks)
     if #deleted > 0 then
       local anchor = hunk.new_count == 0 and hunk.new_start or hunk.new_start - 1
       local after = anchor >= count
-      vim.api.nvim_buf_set_extmark(buf, M.namespace, math.max(0, math.min(anchor, count - 1)), 0, {
+      local row = math.max(0, math.min(anchor, count - 1))
+      vim.api.nvim_buf_set_extmark(buf, M.namespace, row, 0, {
         virt_lines = deleted,
         virt_lines_above = not after,
-        sign_text = not has_add and "-" or nil,
-        sign_hl_group = "ReviewDeleteSign",
+        sign_text = not has_add and (staged.deletions[row] and "┃" or "-") or nil,
+        sign_hl_group = staged.deletions[row] and "ReviewStagedSign" or "ReviewDeleteSign",
         priority = 119,
       })
     end

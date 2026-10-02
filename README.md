@@ -7,11 +7,14 @@ review application.
 
 - Full source files, with ordinary LSP, Treesitter, diagnostics, completion, undo,
   formatting, and filetype plugins.
-- Added lines (`+`) and modified lines (`~`) highlighted in place.
+- Added lines (`+`) and modified lines (`~`) highlighted in place; staged lines
+  use a green `┃` gutter indicator.
 - Deleted text displayed as **virtual lines**, never inserted into the file.
 - Changed-files sidebar, wrapping file/hunk navigation, explicit reviewed state,
   and progress.
 - Staged **and** unstaged changes, plus nonignored untracked files.
+- Stage/unstage individual hunks; discard unstaged hunks or restore review-base
+  hunks with confirmation and Neovim undo.
 - Asynchronous Git processes, lazy base-content loading, refresh on save.
 - No runtime dependencies besides Git and Neovim.
 
@@ -38,6 +41,7 @@ Replace `USER` with the repository owner when publishing this repository.
     "Review", "ReviewClose", "ReviewRefresh", "ReviewToggleReviewed",
     "ReviewMarkReviewed", "ReviewMarkUnreviewed",
     "ReviewNextFile", "ReviewPrevFile", "ReviewNextHunk", "ReviewPrevHunk",
+    "ReviewStageHunk", "ReviewUnstageHunk", "ReviewDiscardHunk", "ReviewRestoreBaseHunk",
   },
   config = function()
     require("review").setup()
@@ -109,8 +113,8 @@ The comparison commit is pinned for the session. Refresh does **not** re-resolve
 moving refs; restart `:Review` after switching branches or updating the base.
 The target is the current working tree, not the index: changes already committed
 on the branch, staged changes, unstaged changes, and untracked files are visible.
-Ignored untracked files are excluded. Nothing stages, commits, checks out, or
-writes source files on your behalf.
+Ignored untracked files are excluded. Only explicit stage/unstage commands modify
+the Git index. Nothing commits, checks out, or writes source files on your behalf.
 
 A refresh discovers all filesystem changes in the repository, removes files that
 now match the base, updates progress, and reapplies overlays to loaded review
@@ -118,6 +122,68 @@ buffers. If the current file becomes unchanged, its buffer stays open and editab
 the sidebar selects another entry without stealing focus. File navigation then
 continues through the remaining entries. Unsaved previously-listed buffers are
 retained when their contents still differ even if the filesystem matches the base.
+
+## Staging, unstaging and discarding hunks
+
+These actions are separate from marking files reviewed. Run them in the source
+buffer, with the cursor on the relevant change:
+
+| Action | Comparison / effect |
+| --- | --- |
+| `:ReviewStageHunk` | Index → **saved filesystem**; apply the selected hunk to the index |
+| `:ReviewUnstageHunk` | `HEAD` → index; reverse the selected staged hunk in the index |
+| `:ReviewDiscardHunk` | Index → current buffer; restore that hunk from the index |
+| `:ReviewRestoreBaseHunk` | Review base → current buffer; restore that hunk from the pinned base |
+
+**Discard preserves staged changes.** Restoring from the review base is deliberately
+separate: it can reverse changes already committed on your branch, or changes
+staged in the index, but only in the working buffer. Neither buffer restore action
+modifies the index. Stage/unstage never modify your working file or buffer.
+
+The review overlay always compares to the review base, so its hunks may differ
+from index/staging hunks. Actions recompute the appropriate diff. A hunk under the
+cursor is selected; otherwise, candidates overlapping the review hunk are used.
+If there is no overlap, or several candidates need choosing, `vim.ui.select()`
+shows a picker with working-buffer line numbers. Unstage positions account for
+unstaged line insertions/deletions; committed review changes alone have nothing
+to stage. File mode changes and empty-file additions/deletions have no text hunk;
+they are handled as a single metadata action. File-mode changes accompanying a
+text hunk are staged/unstaged along with that hunk.
+
+**Stage requires a saved, up-to-date buffer.** Save unsaved edits first (`:w`);
+if another process changed the file, reload/reconcile it before staging. Unstage
+can operate with unsaved buffer edits because it touches only the index.
+
+Both discard and review-base restore always ask for confirmation, with **Cancel**
+first. They replace just the selected region in the real source buffer, preserve
+unrelated edits, mark it unreviewed, and immediately update the overlay. Use `u`
+to undo, or `:w` to save the result to disk. EOF newline changes follow undo/redo
+as well. An entirely discarded new file becomes an empty editable file; it is not
+automatically deleted from disk.
+
+The sidebar displays `[SU]`: `S` means staged changes relative to `HEAD`, `U` means
+unstaged/untracked filesystem changes relative to the index; `-` means none.
+For example, `○ M [S-] source.lua` has staged changes only. These flags refresh
+on save, manual refresh, and stage/unstage; unsaved edits are not filesystem state.
+The `M`/`A`/`D` column still describes the review-base comparison.
+
+Source gutter signs also reflect staging: ordinary review changes use `+`, `~`,
+or `-`; currently staged changes use `┃` linked to the theme's green
+`DiagnosticOk` highlight. This is calculated per line, not per file or review
+hunk. If you edit a staged line again, its unstaged replacement uses the ordinary
+sign after refresh, while other staged lines remain green. Committed branch
+changes are not currently staged and retain their ordinary review signs.
+Staging/unstaging refreshes these indicators automatically; save or manually
+refresh after editing or changing the index externally. Line backgrounds and
+virtual deletions still describe the review-base diff, independently of staging.
+
+Index mutations use `git apply --cached` (reversed for unstage) with the normal
+Git index lock, a private alternate index, and atomic publication. Buffer/session,
+index-entry, and `HEAD` checks cancel stale actions instead of silently applying
+an old selection. Concurrent Git writers are respected; locks are released on
+failure/cancellation. Closing the session cancels pending actions. A hunk picker
+or confirmation remains pending until you choose/cancel it; other hunk actions
+are blocked until then.
 
 ## Commands
 
@@ -131,6 +197,10 @@ retained when their contents still differ even if the filesystem matches the bas
 | `:ReviewMarkUnreviewed` | Mark it unreviewed |
 | `:ReviewNextFile`, `:ReviewPrevFile` | Open next/previous changed file, wrapping |
 | `:ReviewNextHunk`, `:ReviewPrevHunk` | Jump between hunk anchors, wrapping |
+| `:ReviewStageHunk` | Stage selected unstaged hunk (save first) |
+| `:ReviewUnstageHunk` | Unstage selected staged hunk |
+| `:ReviewDiscardHunk` | Confirm and restore hunk from the index, in buffer |
+| `:ReviewRestoreBaseHunk` | Confirm and restore hunk from the review base, in buffer |
 
 Hunk navigation uses real source line numbers. A pure deletion anchors to the
 following real line, or the last line for an EOF deletion. Deleted virtual text
@@ -148,6 +218,10 @@ or `""` to disable it.
 | `]h`, `[h` | Next/previous hunk |
 | `]f`, `[f` | Next/previous file |
 | `<leader>rr` | Toggle reviewed |
+| `<leader>rs` | Stage hunk |
+| `<leader>ru` | Unstage hunk |
+| `<leader>rd` | Discard unstaged hunk (confirmation) |
+| `<leader>rb` | Restore review-base hunk (confirmation) |
 
 | Sidebar mapping | Action |
 | --- | --- |
@@ -174,6 +248,10 @@ require("review").setup({
     next_file = "]f",
     prev_file = "[f",
     toggle_reviewed = "<leader>rr",
+    stage_hunk = "<leader>rs",
+    unstage_hunk = "<leader>ru",
+    discard_hunk = "<leader>rd",
+    restore_base_hunk = "<leader>rb",
   },
   sidebar_mappings = {
     open = "<CR>",
@@ -205,6 +283,10 @@ review.prev_hunk()
 review.toggle_reviewed()
 review.mark_reviewed()
 review.mark_unreviewed()
+review.stage_hunk()
+review.unstage_hunk()
+review.discard_hunk()       -- confirmation, buffer-only; :w to save
+review.restore_base_hunk()  -- confirmation, buffer-only; :w to save
 local progress = review.progress() -- { reviewed = 4, total = 11 }
 local session = review.get_session() -- nil when inactive; inspect, do not mutate
 ```
@@ -224,6 +306,7 @@ Default links are overrideable with `nvim_set_hl` / colorscheme definitions:
 | `ReviewAdd`, `ReviewAddSign` | `DiffAdd` |
 | `ReviewDelete`, `ReviewDeleteSign`, `ReviewVirtualDelete` | `DiffDelete` |
 | `ReviewChange`, `ReviewChangeSign` | `DiffChange` |
+| `ReviewStagedSign` | `DiagnosticOk` (staged `┃` gutter indicator) |
 
 Definitions use `default = true` and are reapplied on `ColorScheme`.
 
@@ -235,6 +318,12 @@ Definitions use `default = true` and are reapplied on `ColorScheme`.
   real buffer; zero-context hunks, omitted/zero counts, no-newline markers.
 - `session.lua`: explicitly owned session state, async invalidation tokens,
   buffer lifecycle, refresh, mapping restoration, navigation and progress.
+- `operations.lua`: fresh action-specific diffs, hunk selection, confirmation,
+  safety checks, staging/unstaging/discard/review-base restore.
+- `index.lua`: raw filesystem snapshots and locked alternate-index transactions.
+- `staging.lua`: maps staged index hunks into working-buffer lines, excluding
+  unstaged replacements, for accurate per-line gutter indicators.
+- `buffer.lua`: source text, minimal hunk replacement, and undo-aware EOF options.
 - `decorations.lua`: one namespace, extmark line highlights/signs, virtual deletions.
 - `sidebar.lua`: scratch sidebar only; never a replacement source buffer.
 - `config.lua`, `commands.lua`, `init.lua`: configuration, commands, public API.
@@ -251,7 +340,14 @@ external diff drivers/textconv and manual offset maintenance.
 - Renames appear as deletion + addition (`--no-renames`), not `R` entries.
 - Binary content has no inline overlay. Gitlinks/submodule directories and symlinks
   are listed but cannot be opened for inline review; a warning explains this.
-- Unresolved merge conflicts are rejected. No staging, hunk revert, or conflict UI.
+- Unresolved merge conflicts are rejected. There is no conflict resolution UI.
+- Hunk actions require an open review file and ordinary UTF-8 text (Unix or DOS
+  line endings). Changing UTF-8 BOM presence via buffer restore is rejected;
+  existing BOMs are preserved. Files outside the base-review list are not accessible
+  through these commands. Binary files, symlinks, and submodules are not supported.
+- Fully deleted files support stage/unstage from their read-only representation.
+  Buffer-only discard/review-base restore requires an existing editable source
+  file; use Git's file-level restore outside the plugin to recreate a missing file.
 - Review state is in-memory only. No persistent state, automatic approval,
   branch-change watcher, filesystem watcher, or typing-time diff calculation.
 - Text comparisons use Neovim's decoded buffer text; unusual encodings, Git
@@ -267,18 +363,33 @@ Run from the repository root:
 
 ```sh
 nvim --headless -u NONE -l tests/run.lua
+nvim --headless -u NONE -l tests/operations.lua
 ```
 
 No test framework dependency. Tests exercise parser/zero-count/no-newline cases,
 virtual deletion placement without source mutation, and temporary Git repositories:
 real buffers, staged/unstaged/untracked/deleted files, unusual path characters,
 manual/automatic refresh, progress, navigation, mapping restoration and cancellation.
+Hunk-operation tests cover partial stage/unstage, index-preserving discard,
+committed review-base restore, unsaved/stale buffers, confirmation cancellation,
+quoted paths, intent-to-add, empty/executable/deleted files, EOF undo/redo branches,
+external index updates, lock cleanup, session-close cancellation, DOS/BOM text,
+missing indexes, split indexes, linked-worktree isolation, and staged gutter
+updates for additions/modifications/deletions, shifted lines, and unsaved edits.
 
 For a manual smoke test, change/add/delete files in a disposable Git repository,
 run `:Review main`, and confirm that deleted lines have no real line numbers.
 Edit an actual source line, save, check the updated overlay, mark it reviewed,
 then `:ReviewClose`. Check that LSP, undo, source buffer contents, and your original
 mappings still work. Use `use_merge_base = false` to compare directly to `main`.
+
+For hunk actions, make two separated changes in a tracked file and save. Run
+`:ReviewStageHunk` on one and verify with `git diff --cached`; the other change
+should remain in `git diff`. Run `:ReviewUnstageHunk` to reverse just that staging.
+Try `:ReviewDiscardHunk`, confirm, check that only the selected buffer region was
+restored, then `u` to undo or `:w` to persist. For the distinction between index and
+base restore, commit a branch change and confirm that `:ReviewRestoreBaseHunk`
+can reverse it in the buffer without changing the commit or index.
 
 ## License
 

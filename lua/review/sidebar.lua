@@ -15,8 +15,14 @@ function M.render(session)
     if file.reviewed then
       done = done + 1
     end
-    lines[#lines + 1] =
-      string.format("%s %s %s", file.reviewed and "✓" or "○", file.status, display(file.path))
+    lines[#lines + 1] = string.format(
+      "%s %s [%s%s] %s",
+      file.reviewed and "✓" or "○",
+      file.status,
+      file.staged and "S" or "-",
+      file.unstaged and "U" or "-",
+      display(file.path)
+    )
   end
   lines[#lines + 1] = ""
   lines[#lines + 1] = string.format("%d / %d reviewed", done, #session.files)

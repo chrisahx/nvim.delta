@@ -13,3 +13,4 @@ jobs:
           neovim: true
           version: ${{ matrix.neovim }}
       - run: nvim --headless -u NONE -l tests/run.lua
+      - run: nvim --headless -u NONE -l tests/operations.lua

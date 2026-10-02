@@ -4,8 +4,9 @@
 </br>
 
 > [!WARNING]
-> This tool is 100% vibecoded. It is designed purely as a personal tool, and I do
-> not advise anyone to use it without reading through the code first.
+> This tool is 100% vibecoded.
+> It is designed purely for personal use and as a future learning project.
+> I do NOT advise anyone to use it without reading through the code first.
 
 </br>
 </br>
